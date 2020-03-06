@@ -1,0 +1,159 @@
+package com.icebartech.whzy.wechat.service.impl;
+
+import com.icebartech.core.components.RedisComponent;
+import com.icebartech.core.enums.CommonResultCodeEnum;
+import com.icebartech.core.exception.ServiceException;
+import com.icebartech.whzy.user.dto.UserDTO;
+import com.icebartech.whzy.user.service.UserService;
+import com.icebartech.whzy.utils.HttpUtil;
+import com.icebartech.whzy.utils.JsonUtil;
+import com.icebartech.whzy.utils.MpWeiXinUtil;
+import com.icebartech.whzy.wechat.dto.*;
+import com.icebartech.whzy.wechat.enums.WxEnum;
+import com.icebartech.whzy.wechat.service.AuthService;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang.RandomStringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+/**
+ * @author Created by liuao on 2019/12/23.
+ * @desc
+ */
+@Service
+@Slf4j
+public class AuthServiceImpl implements AuthService {
+
+    @Autowired
+    private MpWeiXinUtil mpWeiXinUtil;
+
+    @Autowired
+    private RedisComponent redisComponent;
+
+    @Value("${wechat.appid}")
+    private String appid;
+
+    @Value("${wechat.appSecret}")
+    private String secret;
+
+    /** 通过code换取网页授权access_token地址 */
+    private static final String ACCESS_TOKEN_URL = "https://api.weixin.qq.com/sns/oauth2/access_token";
+
+    /** 获取公用access_token */
+    private static final String PUBILC_ACCESS_TOKEN_URL = "https://api.weixin.qq.com/cgi-bin/token";
+
+    /** 通过access_token换取用户信息 **/
+    private static final String USER_INFO_URL = "https://api.weixin.qq.com/sns/userinfo";
+
+    /** 通过access_token换取jsapi_ticket **/
+    private static final String TICKET_URL = "https://api.weixin.qq.com/cgi-bin/ticket/getticket";
+
+
+    @Override
+    public String getOpenId(String code) {
+
+        String urlBuilder = ACCESS_TOKEN_URL +
+                "?appid=" + appid +
+                "&secret=" + secret +
+                "&code=" + code +
+                "&grant_type=" + "authorization_code";
+        String result = HttpUtil.get(urlBuilder);
+        log.info("微信授权返回数据: {}", result);
+        AuthBean authBean = JsonUtil.toObject(result, AuthBean.class);
+        if(authBean==null||authBean.getOpenid()==null||authBean.getOpenid().trim().isEmpty()){
+            throw new ServiceException(CommonResultCodeEnum.DATA_IS_WRONG, "授权失败");
+        }
+        redisComponent.set(WxEnum.ACCESS_TOKEN.getDesc(),authBean.getOpenid(),authBean.getAccessToken(),authBean.getExpiresIn());
+        return authBean.getOpenid();
+    }
+
+
+    @Override
+    public String callback(String code, String state) {
+        return state +"?openId=" + getOpenId(code);
+    }
+
+    @Override
+    public WxUser getWxUser(String openid,String accessToken) {
+        String urlBuilder = USER_INFO_URL +
+                "?access_token=" + accessToken +
+                "&openid=" + openid +
+                "&lang=zh_CN";
+        String result = HttpUtil.get(urlBuilder);
+        log.info("微信返回数据: {}", result);
+        WxUser authBean = JsonUtil.toObject(result, WxUser.class);
+        if(authBean==null||authBean.getOpenid()==null||authBean.getOpenid().trim().isEmpty()){
+            throw new ServiceException(CommonResultCodeEnum.DATA_IS_WRONG, "拉取用户信息失败");
+        }
+        return JsonUtil.toObject(result, WxUser.class);
+    }
+
+    @Override
+    public JsConfig jsConfig(String url) {
+        //随机字符串
+        String nonceStr = RandomStringUtils.randomAlphanumeric(9);
+        //时间戳
+        long timestamp = System.currentTimeMillis();
+        //签名
+        String sign = getSignature(nonceStr,url,timestamp);
+
+        return new JsConfig(appid,timestamp,nonceStr,sign,getToken());
+    }
+
+    /**
+     * 微信签名
+     * @param noncestr 随机字符串
+     * @param url 页面链接
+     * @param timestamp 时间戳
+     * @return signature
+     */
+    public String getSignature(String noncestr,String url,long timestamp){
+        return mpWeiXinUtil.signJsConfig(noncestr,getTicket(),String.valueOf(timestamp),url);
+    }
+
+    /**
+     * 获取令牌
+     * @return access_token
+     */
+    @Override
+    public String getToken(){
+        String result = (String) redisComponent.get(WxEnum.ACCESS_TOKEN.name(),WxEnum.ACCESS_TOKEN.getDesc());
+        if(result==null){
+            String urlBuilder = PUBILC_ACCESS_TOKEN_URL +
+                    "?grant_type=client_credential" +
+                    "&appid=" + appid +
+                    "&secret=" + secret;
+            result = HttpUtil.get(urlBuilder);
+        }
+        log.info("微信返回数据: {}", result);
+        Token token = JsonUtil.toObject(result, Token.class);
+        if(token==null||token.getAccessToken()==null||token.getAccessToken().trim().isEmpty()){
+            throw new ServiceException(CommonResultCodeEnum.DATA_IS_WRONG, "令牌获取失败");
+        }
+        redisComponent.set(WxEnum.USER_INFO.name(),WxEnum.ACCESS_TOKEN.getDesc(),result,token.getExpiresIn());
+        return token.getAccessToken();
+    }
+
+    /**
+     * JS接口的临时票
+     * @return jsapi_ticket
+     */
+    public String getTicket(){
+        String result = (String) redisComponent.get(WxEnum.JSAPI_TICKET.name(),WxEnum.JSAPI_TICKET.getDesc());
+        if(result==null){
+            String urlBuilder = TICKET_URL +
+                    "?access_token=" + getToken() +
+                    "&type=jsapi";
+            result = HttpUtil.get(urlBuilder);
+        }
+        log.info("微信返回数据: {}", result);
+        Ticket ticket = JsonUtil.toObject(result, Ticket.class);
+        if(ticket==null){
+            throw new ServiceException(CommonResultCodeEnum.DATA_IS_WRONG, "JS接口的临时票据获取失败");
+        }
+        redisComponent.set(WxEnum.JSAPI_TICKET.name(),WxEnum.JSAPI_TICKET.getDesc(),result,ticket.getExpiresIn());
+        return ticket.getTicket();
+
+    }
+}
