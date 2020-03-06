@@ -1,0 +1,54 @@
+package com.icebartech.potplant.module.oauth;
+
+import cn.hutool.http.HttpUtil;
+import com.icebartech.core.enums.ResultCodeEnum;
+import com.icebartech.core.exception.ServiceException;
+import com.icebartech.potplant.utils.JsonUtil;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+/**
+ * @author Created by liuao on 2019/12/5.
+ * @desc
+ */
+@Component
+@Slf4j
+public class MiniAuth {
+
+    /** 通过code换取网页授权access_token地址 */
+    private static final String ACCESS_TOKEN_URL = "https://api.weixin.qq.com/sns/jscode2session";
+
+    @Value("${weixin.mini.appid}")
+    private String appid;
+    @Value("${weixin.mini.appSecret}")
+    private String secret;
+
+    public WeixinSession auth(String code){
+        String urlBuilder = ACCESS_TOKEN_URL +
+                "?appid=" + appid +
+                "&secret=" + secret +
+                "&js_code=" + code +
+                "&grant_type=" + "authorization_code";
+        String result = HttpUtil.get(urlBuilder);
+        log.info("微信授权返回数据: {}", result);
+        WeixinSession weixinSession = JsonUtil.toObject(result, WeixinSession.class);
+        if(weixinSession==null||weixinSession.getOpenId()==null||weixinSession.getOpenId().trim().isEmpty()){
+            throw new ServiceException(ResultCodeEnum.DATA_IS_WRONG, "授权失败");
+        }
+        return weixinSession;
+    }
+
+
+    public UserInfo userInfo(WeixinLoginParam param) throws Exception {
+
+        String userInfoStr = AesCbcUtil.decrypt(param);
+        log.info("解密数据: {}", userInfoStr);
+        UserInfo userInfo = JsonUtil.toObject(userInfoStr, UserInfo.class);
+        if(userInfo==null||userInfo.getOpenId()==null||userInfo.getOpenId().trim().isEmpty()){
+            throw new ServiceException(ResultCodeEnum.DATA_IS_WRONG, "拉取用户信息失败");
+        }
+        return userInfo;
+    }
+
+}
