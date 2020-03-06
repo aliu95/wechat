@@ -1,0 +1,18 @@
+package com.icebartech.potplant.module.oauth;
+
+import lombok.Data;
+
+/**
+ * @author Created by liuao on 2019/12/5.
+ * @desc
+ */
+@Data
+public class UserInfo {
+
+   private String avatarUrl;
+
+   private String openId;
+
+   private String nickName;
+
+}
