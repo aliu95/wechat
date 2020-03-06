@@ -1,0 +1,25 @@
+package com.icebartech.potplant.module.oauth;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Data;
+
+/**
+ * @author Created by liuao on 2019/12/5.
+ * @desc
+ */
+@Data
+public class WeixinSession {
+
+    @JsonProperty("openid")
+    private String openId;
+
+    @JsonProperty("session_key")
+    private String sessionKey;
+
+    private String unionid;
+
+    private String errcode;
+
+    private String errmsg;
+
+}
