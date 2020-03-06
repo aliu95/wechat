@@ -1,0 +1,95 @@
+package com.icebartech.whzy.wechat.component;
+
+import com.alibaba.fastjson.JSONObject;
+import com.icebartech.whzy.utils.HttpUtil;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+
+/**
+ * @author Created by liuao on 2019/12/27.
+ * @desc
+ */
+@Component
+public class MessageTemplateComponent {
+
+    @Value("${wechat.appid}")
+    private String appid;
+
+    private final String SEND_URL = "https://api.weixin.qq.com/cgi-bin/message/template/send";
+
+    /**
+     * 参数
+     * @param openId 接收者openid
+     * @param templateId 模板ID
+     * @param url 模板跳转链接（海外帐号没有跳转能力）
+     * @param pagepath 所需跳转到小程序的具体页面路径，支持带参数,（示例index?foo=bar），要求该小程序已发布，暂不支持小游戏
+     * @param data 模板数据
+     * @return JSONObject
+     */
+    public JSONObject template(String openId,
+                               String templateId,
+                               String url,
+                               String pagepath,
+                               String... data){
+        JSONObject json = new  JSONObject();
+        json.put("touser",openId);
+        json.put("template_id",templateId);
+        if(url!=null){
+            json.put("url",url);
+        }
+        if(pagepath!=null){
+            JSONObject miniJson = new  JSONObject();
+            miniJson.put("appid",appid);
+            miniJson.put("pagepath",pagepath);
+            json.put("miniprogram",miniJson);
+        }
+        JSONObject dataJson = new  JSONObject();
+        for(int i=0;i<data.length;i++){
+            if(i==0){
+                JSONObject firstJson = new  JSONObject();
+                firstJson.put("value",data[i]);
+                dataJson.put("first",firstJson);
+            }else if(i<data.length-1){
+                JSONObject keywordJson = new  JSONObject();
+                keywordJson.put("value",data[i]);
+                dataJson.put("keyword"+i,keywordJson);
+            }else {
+                JSONObject remarkJson = new  JSONObject();
+                remarkJson.put("value",data[i]);
+                dataJson.put("remark",remarkJson);
+            }
+        }
+        json.put("data",dataJson);
+        return json;
+    }
+
+    /**
+     * 发送模板消息
+     * @param token token
+     * @param openId 接收者openid
+     * @param templateId 模板ID
+     * @param url 模板跳转链接（海外帐号没有跳转能力）
+     * @param pagepath 所需跳转到小程序的具体页面路径，支持带参数,（示例index?foo=bar），要求该小程序已发布，暂不支持小游戏
+     * @param data 模板数据
+     */
+    public void send(String token,
+                       String openId,
+                       String templateId,
+                       String url,
+                       String pagepath,
+                       String... data){
+        send(token,template(openId,templateId,url,pagepath,data));
+    }
+
+
+
+
+    private void send(String token,JSONObject parm){
+        String url = SEND_URL + "?access_token=" + token;
+        String result = HttpUtil.postJson(url,parm.toJSONString());
+        System.out.println(result);
+    }
+
+
+}
