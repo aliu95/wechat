@@ -1,0 +1,23 @@
+package com.icebartech.potplant.module.oauth;
+
+import lombok.Data;
+
+import javax.validation.constraints.NotBlank;
+
+/**
+ * @author Created by liuao on 2019/12/5.
+ * @desc
+ */
+@Data
+public class WeixinLoginParam {
+
+    @NotBlank
+    private String openId;
+    @NotBlank
+    private String sessionKey;
+    @NotBlank
+    private String iv;
+    @NotBlank
+    private String encryptedData;
+
+}
